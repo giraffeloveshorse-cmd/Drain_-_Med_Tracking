@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Tracie's Recovery Tracker</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Drain Tracker">
+<meta name="theme-color" content="#0f1419">
+<meta name="description" content="Post-surgical drain and medication tracker">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { background: #0f1419; color: #e7e9ea; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+  input, button, textarea { font-family: inherit; }
+  :root {
+    --bg: #0f1419; --card: #1a1f26; --border: #2f3336; --dim: #71767b;
+    --accent: #1d9bf0; --sub: #8899a6; --green: #4ade80; --orange: #d97706;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .header { background: var(--card); padding: calc(var(--safe-top) + 12px) 16px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .header-sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .report-btn { background: #2a3038; color: #e7e9ea; border: 1px solid #3a3f46; border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .flash { padding: 8px 16px; text-align: center; font-size: 13px; font-weight: 600; }
+  .flash-ok { background: #1a3a2a; color: var(--green); }
+  .flash-err { background: #3a1a1a; color: #f87171; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab { flex: 1; padding: 10px 0; background: transparent; border: none; color: var(--dim); font-weight: 500; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; text-transform: capitalize; }
+  .tab.active { color: var(--accent); font-weight: 700; border-bottom-color: var(--accent); }
+  .content { padding: 16px; max-width: 480px; margin: 0 auto; padding-bottom: calc(var(--safe-bottom) + 24px); }
+  .label { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--sub); }
+  .label-lg { margin-bottom: 12px; }
+  .drain-btns { display: flex; gap: 8px; margin-bottom: 16px; }
+  .drain-btn { flex: 1; padding: 14px 0; border-radius: 10px; border: 2px solid var(--border); background: var(--card); color: var(--sub); font-size: 16px; font-weight: 700; cursor: pointer; }
+  .drain-btn.sel { border-color: var(--accent); background: #1a2d40; color: var(--accent); }
+  .vol-input { width: 100%; padding: 14px; border-radius: 10px; border: 2px solid var(--border); background: var(--card); color: #e7e9ea; font-size: 22px; font-weight: 700; text-align: center; outline: none; }
+  .quick-btns { display: flex; gap: 6px; margin: 8px 0 16px; }
+  .quick-btn { flex: 1; padding: 8px 0; border-radius: 8px; border: 1px solid var(--border); background: #161b22; color: var(--sub); font-size: 12px; cursor: pointer; }
+  .quick-btn.sel { background: #2a3038; }
+  .color-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .color-btn { padding: 8px 12px; border-radius: 20px; border: 2px solid transparent; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+  .color-btn.sel { border-color: #e7e9ea; }
+  .color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .note-input { width: 100%; padding: 12px; border-radius: 10px; border: 2px solid var(--border); background: var(--card); color: #e7e9ea; font-size: 14px; outline: none; margin-bottom: 16px; }
+  .log-btn { width: 100%; padding: 16px; border-radius: 12px; border: none; background: var(--accent); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .entry { background: var(--card); border-radius: 10px; padding: 12px; margin-bottom: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .entry-tag { background: #2a3038; color: var(--accent); border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 700; }
+  .entry-vol { font-weight: 700; font-size: 16px; }
+  .entry-time { font-size: 11px; color: var(--dim); margin-top: 4px; }
+  .del-btn { background: transparent; border: none; color: var(--dim); cursor: pointer; font-size: 16px; padding: 4px; }
+  .med-card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid var(--border); }
+  .med-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .med-name { font-weight: 700; font-size: 15px; }
+  .med-info { font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .med-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .med-last { font-size: 11px; color: var(--sub); margin-top: 8px; }
+  .timer-bar { background: #2a3038; border-radius: 6px; height: 6px; margin-top: 8px; overflow: hidden; }
+  .timer-fill { height: 100%; border-radius: 6px; transition: width 0.5s; }
+  .timer-text { font-size: 11px; margin-top: 4px; font-weight: 600; }
+  .med-log-btn { width: 100%; margin-top: 10px; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .summary-cards { display: flex; gap: 8px; margin-bottom: 16px; }
+  .summary-card { flex: 1; background: var(--card); border-radius: 10px; padding: 12px; border: 1px solid var(--border); text-align: center; }
+  .summary-num { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .total-card { background: var(--card); border-radius: 10px; padding: 12px; border: 1px solid var(--border); text-align: center; margin-bottom: 24px; }
+  .total-num { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .guide-card { background: var(--card); border-radius: 10px; padding: 12px; border: 1px solid var(--border); margin-bottom: 24px; }
+  .guide-row { font-size: 12px; padding: 4px 0; }
+  .export-btn { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: #e7e9ea; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; margin-bottom: 8px; }
+  .exp-area { margin-top: 12px; }
+  .exp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .copy-btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .exp-text { width: 100%; height: 200px; background: #0d1117; color: #8b949e; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 11px; font-family: monospace; resize: vertical; }
+  .report-page { background: #fff; color: #111; min-height: 100vh; padding: 24px; font-size: 13px; line-height: 1.5; }
+  .report-inner { max-width: 700px; margin: 0 auto; }
+  .report-title { text-align: center; border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 16px; }
+  .report-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12px; }
+  .report-table th { padding: 6px; text-align: left; border-bottom: 1px solid #ccc; background: #f0f0f0; }
+  .report-table td { padding: 5px; border-bottom: 1px solid #eee; }
+  .back-btn { margin-top: 24px; padding: 10px 20px; background: #111; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .empty { color: var(--dim); text-align: center; padding: 32px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+var e = React.createElement;
+var useState = React.useState;
+var useEffect = React.useEffect;
+
+var DRAIN_KEY = "tracie-drains";
+var MED_KEY = "tracie-meds";
+var SEED_KEY = "tracie-seeded-pwa1";
+
+var SEED_DRAINS = [
+  { id:"sd1", drain:1, volume:10, color:"Dark Red", notes:"Initial reading", date:"2025-02-04T23:22:00" },
+  { id:"sd2", drain:2, volume:30, color:"Amber", notes:"Initial reading", date:"2025-02-04T23:22:00" },
+  { id:"sd3", drain:3, volume:10, color:"Bright Red", notes:"Initial reading", date:"2025-02-04T23:22:00" },
+  { id:"sd4", drain:1, volume:15, color:"Dark Red", notes:"", date:"2025-02-05T11:30:00" },
+  { id:"sd5", drain:2, volume:15, color:"Yellow", notes:"", date:"2025-02-05T11:30:00" },
+  { id:"sd6", drain:3, volume:30, color:"Dark Red", notes:"", date:"2025-02-05T11:30:00" }
+];
+
+var SEED_MEDS = [
+  { id:"sm1", med:"Oxycodone 5mg", date:"2025-02-05T07:30:00", notes:"" },
+  { id:"sm2", med:"Oxycodone 5mg", date:"2025-02-05T11:30:00", notes:"" },
+  { id:"sm3", med:"Senokot", date:"2025-02-05T11:30:00", notes:"" }
+];
+
+var MEDS_LIST = [
+  { name:"Oxycodone 5mg", interval:4, type:"PRN", info:"Every 4 hours as needed for pain" },
+  { name:"Cefadroxil 500mg", interval:12, type:"Scheduled", info:"Twice daily for 14 days (antibiotic)" },
+  { name:"Senokot", interval:12, type:"PRN", info:"Stool softener / laxative as needed" }
+];
+
+var COLORS = ["Dark Red","Bright Red","Pink","Amber","Yellow","Clear"];
+var CHEX = {"Dark Red":"#8b1a1a","Bright Red":"#dc2626","Pink":"#f472b6","Amber":"#d97706","Yellow":"#eab308","Clear":"#a5f3fc"};
+
+function fmtDT(d) {
+  var dt = new Date(d);
+  return dt.toLocaleDateString("en-US",{month:"numeric",day:"numeric"}) + " " + dt.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+}
+function fmtDay(d) { return new Date(d).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); }
+function isToday(d) { return new Date(d).toDateString() === new Date().toDateString(); }
+function sortD(a) { return a.slice().sort(function(x,y){return new Date(x.date)-new Date(y.date);}); }
+
+function load(key) {
+  try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : []; } catch(e) { return []; }
+}
+function save(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
+}
+
+function App() {
+  var _d = useState([]); var drains = _d[0], setDrains = _d[1];
+  var _m = useState([]); var meds = _m[0], setMeds = _m[1];
+  var _t = useState("log"); var tab = _t[0], setTab = _t[1];
+  var _r = useState(false); var report = _r[0], setReport = _r[1];
+  var _tk = useState(Date.now()); var tick = _tk[0], setTick = _tk[1];
+  var _dr = useState(1); var selDrain = _dr[0], setSelDrain = _dr[1];
+  var _v = useState(""); var vol = _v[0], setVol = _v[1];
+  var _c = useState("Dark Red"); var col = _c[0], setCol = _c[1];
+  var _n = useState(""); var note = _n[0], setNote = _n[1];
+  var _ms = useState(""); var msg = _ms[0], setMsg = _ms[1];
+  var _ev = useState(""); var expView = _ev[0], setExpView = _ev[1];
+
+  useEffect(function() {
+    var id = setInterval(function() { setTick(Date.now()); }, 30000);
+    return function() { clearInterval(id); };
+  }, []);
+
+  useEffect(function() {
+    var d = load(DRAIN_KEY);
+    var m = load(MED_KEY);
+    var seeded = localStorage.getItem(SEED_KEY);
+    if (!seeded) {
+      var dIds = {}; d.forEach(function(x){dIds[x.id]=true;});
+      SEED_DRAINS.forEach(function(s){if(!dIds[s.id]) d.push(s);});
+      var mIds = {}; m.forEach(function(x){mIds[x.id]=true;});
+      SEED_MEDS.forEach(function(s){if(!mIds[s.id]) m.push(s);});
+      d = sortD(d); m = sortD(m);
+      save(DRAIN_KEY, d); save(MED_KEY, m);
+      localStorage.setItem(SEED_KEY, "1");
+    }
+    setDrains(d); setMeds(m);
+  }, []);
+
+  function flash(t) { setMsg(t); setTimeout(function(){setMsg("");}, 2200); }
+  function upDrains(nd) { setDrains(nd); save(DRAIN_KEY, nd); }
+  function upMeds(nm) { setMeds(nm); save(MED_KEY, nm); }
+
+  function addDrain() {
+    var v = parseFloat(vol);
+    if (isNaN(v)||v<=0) { flash("Enter valid volume"); return; }
+    var entry = {id:String(Date.now()),drain:selDrain,volume:v,color:col,notes:note,date:new Date().toISOString()};
+    upDrains(sortD(drains.concat([entry])));
+    setVol(""); setNote("");
+    flash("Drain #"+selDrain+": "+v+"ml logged!");
+  }
+
+  function getLastDose(name) {
+    var doses = meds.filter(function(m){return m.med===name;});
+    if(!doses.length) return null;
+    doses.sort(function(a,b){return new Date(b.date)-new Date(a.date);});
+    return doses[0];
+  }
+
+  function getMedTimer(med) {
+    var last = getLastDose(med.name);
+    if(!last) return {ok:true, text:"No doses logged", pct:100};
+    var hrs = (tick - new Date(last.date).getTime())/3600000;
+    var left = med.interval - hrs;
+    if(left<=0) return {ok:true, text:"Ready for next dose", pct:100};
+    var h=Math.floor(left), m=Math.round((left-h)*60);
+    return {ok:false, text:h+"h "+m+"m until next dose", pct:Math.round((hrs/med.interval)*100)};
+  }
+
+  function logMed(name) {
+    var med = MEDS_LIST.find(function(x){return x.name===name;});
+    if(!med) return;
+    var t = getMedTimer(med);
+    if(!t.ok) return;
+    var entry = {id:String(Date.now()),med:name,date:new Date().toISOString(),notes:""};
+    upMeds(sortD(meds.concat([entry])));
+    flash(name+" logged!");
+  }
+
+  var tDrains = drains.filter(function(d){return isToday(d.date);});
+  var tTotal = tDrains.reduce(function(s,d){return s+d.volume;},0);
+  var tMeds = meds.filter(function(m){return isToday(m.date);}).length;
+
+  function makeCSV() {
+    var rows=["Type,Date,Drain,Volume,Color,Medication,Notes"];
+    drains.forEach(function(d){rows.push("Drain,"+fmtDT(d.date)+","+d.drain+","+d.volume+","+d.color+",,"+(d.notes||""));});
+    meds.forEach(function(m){rows.push("Medication,"+fmtDT(m.date)+",,,,"+m.med+","+(m.notes||""));});
+    return rows.join("\n");
+  }
+  function makeJSON() { return JSON.stringify({drains:drains,meds:meds,exported:new Date().toISOString()},null,2); }
+  function doCopy(text,label) {
+    try{navigator.clipboard.writeText(text);flash(label+" copied!");}catch(e){flash("Long-press to select & copy");}
+  }
+
+  // REPORT
+  if (report) {
+    var byDate = {};
+    drains.forEach(function(d){var k=fmtDay(d.date);if(!byDate[k])byDate[k]=[];byDate[k].push(d);});
+    return e("div",{className:"report-page"},
+      e("div",{className:"report-inner"},
+        e("div",{className:"report-title"},
+          e("div",{style:{fontSize:20,fontWeight:700}},"Post-Surgical Recovery Tracker"),
+          e("div",{style:{fontSize:15,marginTop:4}},"Patient: Tracie Smit"),
+          e("div",{style:{fontSize:12,color:"#555"}},"Provider: Lankenau Medical Center"),
+          e("div",{style:{fontSize:12,color:"#555"}},"Generated: "+new Date().toLocaleString())
+        ),
+        e("div",{style:{fontWeight:700,fontSize:15,marginBottom:8}},"Drain Output"),
+        e("table",{className:"report-table"},
+          e("thead",null,e("tr",null,e("th",null,"Date/Time"),e("th",null,"Drain"),e("th",null,"Volume"),e("th",null,"Color"),e("th",null,"Notes"))),
+          e("tbody",null,drains.map(function(d){
+            return e("tr",{key:d.id},e("td",null,fmtDT(d.date)),e("td",null,"#"+d.drain),e("td",null,d.volume+" ml"),e("td",null,d.color),e("td",null,d.notes||"-"));
+          }))
+        ),
+        Object.keys(byDate).map(function(day){
+          var entries = byDate[day];
+          var d1=0,d2=0,d3=0;
+          entries.forEach(function(x){
+            if(x.drain===1) d1+=x.volume;
+            if(x.drain===2) d2+=x.volume;
+            if(x.drain===3) d3+=x.volume;
+          });
+          var tot=d1+d2+d3;
+          return e("div",{key:day,style:{fontSize:12,marginBottom:6,padding:8,background:"#f5f5f5",borderRadius:4}},
+            e("strong",null,day+": "),
+            "#1: "+d1+"ml | #2: "+d2+"ml | #3: "+d3+"ml | ",
+            e("strong",null,"Total: "+tot+"ml")
+          );
+        }),
+        e("div",{style:{fontWeight:700,fontSize:15,marginTop:20,marginBottom:8}},"Medication Log"),
+        e("table",{className:"report-table"},
+          e("thead",null,e("tr",null,e("th",null,"Date/Time"),e("th",null,"Medication"))),
+          e("tbody",null,meds.map(function(m){
+            return e("tr",{key:m.id},e("td",null,fmtDT(m.date)),e("td",null,m.med));
+          }))
+        ),
+        e("div",{style:{fontWeight:700,fontSize:15,marginTop:20,marginBottom:8}},"Prescriptions"),
+        MEDS_LIST.map(function(m){
+          return e("div",{key:m.name,style:{fontSize:12,marginBottom:3}},e("strong",null,m.name)," - ",m.info);
+        }),
+        e("button",{className:"back-btn",onClick:function(){setReport(false);}},"< Back to App")
+      )
+    );
+  }
+
+  // MAIN
+  return e("div",null,
+    // Header
+    e("div",{className:"header"},
+      e("div",null,
+        e("h1",null,"Tracie's Recovery Tracker"),
+        e("div",{className:"header-sub"},"Drains today: "+tTotal+"ml | Meds: "+tMeds+" doses")
+      ),
+      e("button",{className:"report-btn",onClick:function(){setReport(true);}},"Report")
+    ),
+    // Flash
+    msg ? e("div",{className:"flash "+(msg.indexOf("!")>=0?"flash-ok":"flash-err")},msg) : null,
+    // Tabs
+    e("div",{className:"tabs"},
+      ["log","history","meds","summary"].map(function(t){
+        return e("button",{key:t,className:"tab"+(tab===t?" active":""),onClick:function(){setTab(t);}},t);
+      })
+    ),
+    e("div",{className:"content"},
+
+      // LOG TAB
+      tab==="log" ? e("div",null,
+        e("div",{className:"label label-lg"},"Select Drain"),
+        e("div",{className:"drain-btns"},
+          [1,2,3].map(function(n){return e("button",{key:n,className:"drain-btn"+(selDrain===n?" sel":""),onClick:function(){setSelDrain(n);}},"#"+n);})
+        ),
+        e("div",{className:"label"},"Volume (ml)"),
+        e("input",{type:"number",inputMode:"numeric",className:"vol-input",value:vol,onChange:function(ev){setVol(ev.target.value);},placeholder:"0"}),
+        e("div",{className:"quick-btns"},
+          [5,10,15,20,25,30].map(function(v){return e("button",{key:v,className:"quick-btn"+(vol===String(v)?" sel":""),onClick:function(){setVol(String(v));}},"+"+v);})
+        ),
+        e("div",{className:"label"},"Fluid Color"),
+        e("div",{className:"color-btns"},
+          COLORS.map(function(c){return e("button",{key:c,className:"color-btn"+(col===c?" sel":""),style:{background:CHEX[c]+"33",color:CHEX[c]},onClick:function(){setCol(c);}},
+            e("span",{className:"color-dot",style:{background:CHEX[c]}}),c);})
+        ),
+        e("input",{type:"text",className:"note-input",value:note,onChange:function(ev){setNote(ev.target.value);},placeholder:"Notes (optional)"}),
+        e("button",{className:"log-btn",onClick:addDrain},"Log Drain #"+selDrain)
+      ) : null,
+
+      // HISTORY TAB
+      tab==="history" ? e("div",null,
+        // Daily summary section
+        e("div",{className:"label label-lg"},"Daily Totals by Drain"),
+        (function(){
+          var byDay = {};
+          drains.forEach(function(d){
+            var dayKey = fmtDay(d.date);
+            if(!byDay[dayKey]) byDay[dayKey] = {d1:0,d2:0,d3:0,total:0};
+            byDay[dayKey]["d"+d.drain] += d.volume;
+            byDay[dayKey].total += d.volume;
+          });
+          var days = Object.keys(byDay).sort(function(a,b){return new Date(b)-new Date(a);});
+          if(days.length===0) return e("div",{className:"empty"},"No data yet");
+          return days.map(function(day){
+            var data = byDay[day];
+            return e("div",{key:day,className:"med-card",style:{padding:12,marginBottom:8}},
+              e("div",{style:{fontWeight:700,fontSize:14,marginBottom:8}},day),
+              e("div",{style:{display:"flex",gap:8}},
+                e("div",{style:{flex:1,textAlign:"center",background:"#2a3038",borderRadius:6,padding:8}},
+                  e("div",{style:{fontSize:10,color:"var(--dim)"}},"#1"),
+                  e("div",{style:{fontSize:16,fontWeight:700}},data.d1+" ml")
+                ),
+                e("div",{style:{flex:1,textAlign:"center",background:"#2a3038",borderRadius:6,padding:8}},
+                  e("div",{style:{fontSize:10,color:"var(--dim)"}},"#2"),
+                  e("div",{style:{fontSize:16,fontWeight:700}},data.d2+" ml")
+                ),
+                e("div",{style:{flex:1,textAlign:"center",background:"#2a3038",borderRadius:6,padding:8}},
+                  e("div",{style:{fontSize:10,color:"var(--dim)"}},"#3"),
+                  e("div",{style:{fontSize:16,fontWeight:700}},data.d3+" ml")
+                ),
+                e("div",{style:{flex:1,textAlign:"center",background:"#1a2d40",borderRadius:6,padding:8}},
+                  e("div",{style:{fontSize:10,color:"var(--accent)"}},"Total"),
+                  e("div",{style:{fontSize:16,fontWeight:700,color:"var(--accent)"}},data.total+" ml")
+                )
+              )
+            );
+          });
+        })(),
+
+        e("div",{className:"label label-lg",style:{marginTop:24}},"Drain History"),
+        drains.slice().reverse().map(function(d){
+          return e("div",{key:d.id,className:"entry"},
+            e("div",null,
+              e("div",{style:{display:"flex",alignItems:"center",gap:8}},
+                e("span",{className:"entry-tag"},"#"+d.drain),
+                e("span",{className:"entry-vol"},d.volume+" ml"),
+                e("span",{className:"color-dot",style:{background:CHEX[d.color]||"#888"}}),
+                e("span",{style:{fontSize:11,color:"var(--sub)"}},d.color)
+              ),
+              e("div",{className:"entry-time"},fmtDT(d.date)+(d.notes?" - "+d.notes:""))
+            ),
+            e("button",{className:"del-btn",onClick:function(){upDrains(drains.filter(function(x){return x.id!==d.id;}));}},"X")
+          );
+        }),
+        drains.length===0?e("div",{className:"empty"},"No entries yet"):null,
+        e("div",{className:"label label-lg",style:{marginTop:24}},"Medication History"),
+        meds.slice().reverse().map(function(m){
+          return e("div",{key:m.id,className:"entry"},
+            e("div",null,
+              e("div",{style:{fontWeight:600,fontSize:14}},m.med),
+              e("div",{className:"entry-time"},fmtDT(m.date))
+            ),
+            e("button",{className:"del-btn",onClick:function(){upMeds(meds.filter(function(x){return x.id!==m.id;}));}},"X")
+          );
+        }),
+        meds.length===0?e("div",{className:"empty"},"No doses logged"):null
+      ) : null,
+
+      // MEDS TAB
+      tab==="meds" ? e("div",null,
+        MEDS_LIST.map(function(m){
+          var timer = getMedTimer(m);
+          var last = getLastDose(m.name);
+          return e("div",{key:m.name,className:"med-card"},
+            e("div",{className:"med-header"},
+              e("div",null,
+                e("div",{className:"med-name"},m.name),
+                e("div",{className:"med-info"},m.info)
+              ),
+              e("span",{className:"med-badge",style:{background:m.type==="Scheduled"?"#1a2d40":"#2a2520",color:m.type==="Scheduled"?"var(--accent)":"var(--orange)"}},m.type)
+            ),
+            last?e("div",{className:"med-last"},"Last dose: "+fmtDT(last.date)):null,
+            e("div",{className:"timer-bar"},
+              e("div",{className:"timer-fill",style:{background:timer.ok?"var(--green)":"var(--orange)",width:Math.min(timer.pct,100)+"%"}})
+            ),
+            e("div",{className:"timer-text",style:{color:timer.ok?"var(--green)":"var(--orange)"}},timer.text),
+            e("button",{className:"med-log-btn",style:{background:timer.ok?"var(--accent)":"#2a3038",color:timer.ok?"#fff":"var(--dim)",opacity:timer.ok?1:0.6,cursor:timer.ok?"pointer":"default"},onClick:function(){logMed(m.name);}},timer.ok?"Log Dose Now":"Too Early")
+          );
+        })
+      ) : null,
+
+      // SUMMARY TAB
+      tab==="summary" ? e("div",null,
+        e("div",{className:"label label-lg"},"Today's Drain Summary"),
+        e("div",{className:"summary-cards"},
+          [1,2,3].map(function(n){
+            var v=tDrains.filter(function(d){return d.drain===n;}).reduce(function(s,d){return s+d.volume;},0);
+            return e("div",{key:n,className:"summary-card"},
+              e("div",{style:{fontSize:11,color:"var(--dim)"}},"Drain #"+n),
+              e("div",{className:"summary-num"},v),
+              e("div",{style:{fontSize:11,color:"var(--dim)"}},"ml")
+            );
+          })
+        ),
+        e("div",{className:"total-card"},
+          e("div",{style:{fontSize:11,color:"var(--dim)"}},"Total Today"),
+          e("div",{className:"total-num"},tTotal+" ml")
+        ),
+        e("div",{className:"label"},"Color Guide"),
+        e("div",{className:"guide-card"},
+          e("div",{className:"guide-row"},e("strong",null,"Dark Red / Bright Red")," - Normal early post-op"),
+          e("div",{className:"guide-row"},e("strong",null,"Pink")," - Dilute blood; healing"),
+          e("div",{className:"guide-row"},e("strong",null,"Amber")," - Serous fluid; good sign"),
+          e("div",{className:"guide-row"},e("strong",null,"Yellow / Clear")," - Advanced healing")
+        ),
+        e("div",{className:"label"},"Export & Backup"),
+        e("button",{className:"export-btn",onClick:function(){setExpView(expView==="csv"?"":"csv");}},expView==="csv"?"Hide CSV":"Show CSV (Copy & Paste)"),
+        e("button",{className:"export-btn",onClick:function(){setExpView(expView==="json"?"":"json");}},expView==="json"?"Hide JSON":"Show JSON Backup (Copy & Paste)"),
+        e("button",{className:"export-btn",onClick:function(){setReport(true);}},"Print Full Report for Doctor"),
+        expView?e("div",{className:"exp-area"},
+          e("div",{className:"exp-header"},
+            e("div",{style:{fontSize:12,color:"var(--sub)"}},expView==="csv"?"CSV Data":"JSON Backup"),
+            e("button",{className:"copy-btn",onClick:function(){doCopy(expView==="csv"?makeCSV():makeJSON(),expView==="csv"?"CSV":"JSON");}},"Copy All")
+          ),
+          e("textarea",{readOnly:true,className:"exp-text",value:expView==="csv"?makeCSV():makeJSON(),onFocus:function(ev){ev.target.select();}})
+        ):null
+      ) : null
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("app")).render(e(App));
+
+// Register service worker for offline PWA
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(function(e) { console.log("SW reg failed:", e); });
+}
+</script>
+</body>
+</html>
