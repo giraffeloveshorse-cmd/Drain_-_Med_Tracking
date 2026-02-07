@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lunar Lander - 1970s Arcade</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+  }
+  canvas {
+    border: 2px solid #0f0;
+    image-rendering: pixelated;
+  }
+  #container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #instructions {
+    color: #0f0;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    margin-top: 8px;
+    text-align: center;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+<div id="container">
+  <canvas id="game" width="640" height="480"></canvas>
+  <div id="instructions">Arrow Keys / WASD to thrust &bull; R to restart &bull; Land gently on flat pads</div>
+</div>
+<script>
+(function() {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // --- Constants ---
+  const W = 640, H = 480;
+  const GRAVITY = 0.02;
+  const THRUST = 0.06;
+  const SIDE_THRUST = 0.03;
+  const MAX_LANDING_VY = 0.8;
+  const MAX_LANDING_VX = 0.5;
+  const MAX_LANDING_ANGLE = 0.25; // radians (~14 deg)
+  const FUEL_MAX = 500;
+  const STAR_COUNT = 120;
+
+  // --- Game State ---
+  let lander, terrain, pads, stars, particles, state, score, level;
+
+  // --- Terrain Generation ---
+  function generateTerrain(lvl) {
+    const points = [];
+    const padPositions = [];
+    const numPads = Math.min(2 + Math.floor(lvl / 2), 4);
+    const segWidth = W / 80;
+    const numSegs = 80;
+
+    // Decide where pads go
+    const padSlots = [];
+    const slotSize = Math.floor(numSegs / (numPads + 1));
+    for (let i = 0; i < numPads; i++) {
+      const center = slotSize * (i + 1) + Math.floor(Math.random() * 6 - 3);
+      padSlots.push(center);
+    }
+
+    let y = 300 + Math.random() * 80;
+    for (let i = 0; i <= numSegs; i++) {
+      const isPad = padSlots.some(p => Math.abs(i - p) <= 2);
+      if (isPad) {
+        // Flat pad
+        const padSlot = padSlots.find(p => Math.abs(i - p) <= 2);
+        const padY = y;
+        points.push({ x: i * segWidth, y: padY });
+        if (i === padSlot - 2) {
+          padPositions.push({ x: (padSlot - 2) * segWidth, y: padY, w: 5 * segWidth });
+        }
+      } else {
+        y += (Math.random() - 0.5) * (20 + lvl * 3);
+        y = Math.max(200, Math.min(H - 20, y));
+        points.push({ x: i * segWidth, y: y });
+      }
+    }
+    return { points, pads: padPositions };
+  }
+
+  // --- Stars ---
+  function generateStars() {
+    const s = [];
+    for (let i = 0; i < STAR_COUNT; i++) {
+      s.push({
+        x: Math.random() * W,
+        y: Math.random() * H * 0.6,
+        brightness: 0.3 + Math.random() * 0.7,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+    return s;
+  }
+
+  // --- Particles (thrust & explosion) ---
+  function spawnThrust(x, y, angle) {
+    for (let i = 0; i < 3; i++) {
+      particles.push({
+        x: x, y: y,
+        vx: Math.sin(angle) * (1 + Math.random()) + (Math.random() - 0.5) * 0.5,
+        vy: Math.cos(angle) * (1 + Math.random()) + (Math.random() - 0.5) * 0.5,
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        type: 'thrust'
+      });
+    }
+  }
+
+  function spawnExplosion(x, y) {
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1 + Math.random() * 3;
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 30 + Math.random() * 30,
+        maxLife: 60,
+        type: 'explosion'
+      });
+    }
+  }
+
+  function spawnLandingCelebration(x, y) {
+    for (let i = 0; i < 20; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+      const sp = 0.5 + Math.random() * 2;
+      particles.push({
+        x: x + (Math.random() - 0.5) * 20,
+        y: y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        type: 'celebrate'
+      });
+    }
+  }
+
+  // --- Init ---
+  function init(lvl) {
+    level = lvl || 1;
+    const t = generateTerrain(level);
+    terrain = t.points;
+    pads = t.pads;
+    stars = generateStars();
+    particles = [];
+    state = 'playing'; // playing, crashed, landed
+    score = score || 0;
+    lander = {
+      x: 100 + Math.random() * (W - 200),
+      y: 40,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: 0,
+      angle: 0,
+      fuel: FUEL_MAX,
+      thrusting: false,
+      thrustLeft: false,
+      thrustRight: false,
+      width: 16,
+      height: 20
+    };
+  }
+
+  // --- Input ---
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.code === 'KeyR') {
+      score = 0;
+      init(1);
+    }
+    if ((state === 'landed') && e.code === 'Space') {
+      init(level + 1);
+    }
+    if ((state === 'crashed') && e.code === 'Space') {
+      score = 0;
+      init(1);
+    }
+    e.preventDefault();
+  });
+  window.addEventListener('keyup', e => {
+    keys[e.code] = false;
+    e.preventDefault();
+  });
+
+  // Touch controls
+  let touchThrust = false, touchLeft = false, touchRight = false;
+  canvas.addEventListener('touchstart', handleTouch, { passive: false });
+  canvas.addEventListener('touchmove', handleTouch, { passive: false });
+  canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    touchThrust = false; touchLeft = false; touchRight = false;
+  });
+  function handleTouch(e) {
+    e.preventDefault();
+    touchThrust = false; touchLeft = false; touchRight = false;
+    for (const t of e.touches) {
+      const rect = canvas.getBoundingClientRect();
+      const tx = t.clientX - rect.left;
+      const ty = t.clientY - rect.top;
+      if (ty < rect.height * 0.5) touchThrust = true;
+      if (tx < rect.width * 0.33) touchLeft = true;
+      if (tx > rect.width * 0.66) touchRight = true;
+    }
+    if (state === 'landed' || state === 'crashed') {
+      if (state === 'landed') init(level + 1);
+      else { score = 0; init(1); }
+    }
+  }
+
+  // --- Collision ---
+  function getTerrainYAt(px) {
+    for (let i = 0; i < terrain.length - 1; i++) {
+      const p1 = terrain[i], p2 = terrain[i + 1];
+      if (px >= p1.x && px <= p2.x) {
+        const t = (px - p1.x) / (p2.x - p1.x);
+        return p1.y + t * (p2.y - p1.y);
+      }
+    }
+    return H;
+  }
+
+  function isOnPad(x, y) {
+    for (const pad of pads) {
+      if (x >= pad.x && x <= pad.x + pad.w && Math.abs(y - pad.y) < 5) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // --- Update ---
+  function update() {
+    if (state !== 'playing') return;
+
+    const thrusting = keys['ArrowUp'] || keys['KeyW'] || touchThrust;
+    const left = keys['ArrowLeft'] || keys['KeyA'] || touchLeft;
+    const right = keys['ArrowRight'] || keys['KeyD'] || touchRight;
+
+    // Rotation
+    if (left) lander.angle -= 0.04;
+    if (right) lander.angle += 0.04;
+
+    // Thrust
+    lander.thrusting = false;
+    if (thrusting && lander.fuel > 0) {
+      lander.vx -= Math.sin(lander.angle) * THRUST;
+      lander.vy -= Math.cos(lander.angle) * THRUST;
+      lander.fuel -= 1;
+      lander.thrusting = true;
+      spawnThrust(
+        lander.x + Math.sin(lander.angle) * 12,
+        lander.y + Math.cos(lander.angle) * 12,
+        lander.angle
+      );
+    }
+
+    // Gravity
+    lander.vy += GRAVITY;
+
+    // Move
+    lander.x += lander.vx;
+    lander.y += lander.vy;
+
+    // Screen wrap horizontally
+    if (lander.x < 0) lander.x = W;
+    if (lander.x > W) lander.x = 0;
+
+    // Ground collision
+    const groundY = getTerrainYAt(lander.x);
+    const landerBottom = lander.y + lander.height / 2;
+
+    if (landerBottom >= groundY) {
+      lander.y = groundY - lander.height / 2;
+      const onPad = isOnPad(lander.x, groundY);
+      const safeSpeed = Math.abs(lander.vy) <= MAX_LANDING_VY && Math.abs(lander.vx) <= MAX_LANDING_VX;
+      const safeAngle = Math.abs(lander.angle % (Math.PI * 2)) <= MAX_LANDING_ANGLE ||
+                         Math.abs(lander.angle % (Math.PI * 2)) >= (Math.PI * 2 - MAX_LANDING_ANGLE);
+
+      if (onPad && safeSpeed && safeAngle) {
+        state = 'landed';
+        lander.vx = 0;
+        lander.vy = 0;
+        const fuelBonus = Math.floor(lander.fuel / 2);
+        const levelBonus = level * 50;
+        score += 100 + fuelBonus + levelBonus;
+        spawnLandingCelebration(lander.x, lander.y);
+      } else {
+        state = 'crashed';
+        spawnExplosion(lander.x, lander.y);
+      }
+    }
+
+    // Ceiling
+    if (lander.y < 0) { lander.y = 0; lander.vy = Math.abs(lander.vy) * 0.3; }
+
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.type !== 'celebrate') p.vy += 0.01;
+      p.life--;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  // --- Draw ---
+  function drawScanlines() {
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    for (let i = 0; i < H; i += 3) {
+      ctx.fillRect(0, i, W, 1);
+    }
+  }
+
+  function drawStars(time) {
+    for (const s of stars) {
+      const b = s.brightness * (0.6 + 0.4 * Math.sin(time * 0.002 + s.twinkle));
+      ctx.fillStyle = `rgba(255,255,255,${b})`;
+      ctx.fillRect(Math.floor(s.x), Math.floor(s.y), 1, 1);
+    }
+  }
+
+  function drawTerrain() {
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(terrain[0].x, terrain[0].y);
+    for (let i = 1; i < terrain.length; i++) {
+      ctx.lineTo(terrain[i].x, terrain[i].y);
+    }
+    ctx.stroke();
+
+    // Fill terrain solid
+    ctx.fillStyle = '#010';
+    ctx.beginPath();
+    ctx.moveTo(terrain[0].x, terrain[0].y);
+    for (let i = 1; i < terrain.length; i++) {
+      ctx.lineTo(terrain[i].x, terrain[i].y);
+    }
+    ctx.lineTo(W, H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw pads
+    for (const pad of pads) {
+      ctx.strokeStyle = '#ff0';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(pad.x, pad.y);
+      ctx.lineTo(pad.x + pad.w, pad.y);
+      ctx.stroke();
+
+      // Blinking lights on pad
+      const blink = Math.sin(Date.now() * 0.005) > 0;
+      if (blink) {
+        ctx.fillStyle = '#ff0';
+        ctx.fillRect(pad.x + 2, pad.y - 2, 3, 2);
+        ctx.fillRect(pad.x + pad.w - 5, pad.y - 2, 3, 2);
+      }
+    }
+  }
+
+  function drawLander() {
+    if (state === 'crashed') return;
+
+    ctx.save();
+    ctx.translate(lander.x, lander.y);
+    ctx.rotate(lander.angle);
+
+    // Body (vector outline style)
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 1.5;
+
+    // Main body
+    ctx.beginPath();
+    ctx.moveTo(0, -10);
+    ctx.lineTo(-8, 4);
+    ctx.lineTo(-6, 6);
+    ctx.lineTo(-10, 10);
+    ctx.moveTo(0, -10);
+    ctx.lineTo(8, 4);
+    ctx.lineTo(6, 6);
+    ctx.lineTo(10, 10);
+    ctx.stroke();
+
+    // Cockpit
+    ctx.beginPath();
+    ctx.arc(0, -3, 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Cross bar (legs)
+    ctx.beginPath();
+    ctx.moveTo(-10, 10);
+    ctx.lineTo(10, 10);
+    ctx.stroke();
+
+    // Thrust flame
+    if (lander.thrusting) {
+      const flicker = 5 + Math.random() * 8;
+      ctx.strokeStyle = '#ff0';
+      ctx.beginPath();
+      ctx.moveTo(-4, 10);
+      ctx.lineTo(0, 10 + flicker);
+      ctx.lineTo(4, 10);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#f80';
+      ctx.beginPath();
+      ctx.moveTo(-2, 10);
+      ctx.lineTo(0, 10 + flicker * 0.6);
+      ctx.lineTo(2, 10);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      const alpha = p.life / p.maxLife;
+      if (p.type === 'thrust') {
+        ctx.fillStyle = `rgba(255,200,0,${alpha})`;
+        ctx.fillRect(p.x, p.y, 2, 2);
+      } else if (p.type === 'explosion') {
+        const r = p.life > p.maxLife * 0.5 ? 255 : 200;
+        const g = Math.floor(100 * alpha);
+        ctx.fillStyle = `rgba(${r},${g},0,${alpha})`;
+        const size = 1 + (1 - alpha) * 3;
+        ctx.fillRect(p.x, p.y, size, size);
+      } else if (p.type === 'celebrate') {
+        const colors = ['#0f0', '#ff0', '#0ff'];
+        ctx.fillStyle = colors[Math.floor(p.x * 3) % 3];
+        ctx.globalAlpha = alpha;
+        ctx.fillRect(p.x, p.y, 2, 2);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  function drawHUD() {
+    ctx.fillStyle = '#0f0';
+    ctx.font = '14px "Courier New", monospace';
+
+    // Altitude
+    const groundY = getTerrainYAt(lander.x);
+    const alt = Math.max(0, Math.floor(groundY - lander.y - lander.height / 2));
+    ctx.fillText(`ALT: ${alt}`, 10, 20);
+
+    // Velocity
+    const hSpeed = Math.abs(lander.vx * 50).toFixed(1);
+    const vSpeed = (lander.vy * 50).toFixed(1);
+    ctx.fillText(`H-VEL: ${hSpeed}`, 10, 38);
+    ctx.fillText(`V-VEL: ${vSpeed}`, 10, 56);
+
+    // Fuel bar
+    ctx.fillText('FUEL:', 10, 76);
+    const fuelPct = lander.fuel / FUEL_MAX;
+    ctx.strokeStyle = '#0f0';
+    ctx.strokeRect(65, 64, 102, 14);
+    ctx.fillStyle = fuelPct > 0.25 ? '#0f0' : '#f00';
+    ctx.fillRect(66, 65, fuelPct * 100, 12);
+
+    // Score & Level
+    ctx.fillStyle = '#0f0';
+    ctx.fillText(`SCORE: ${score}`, W - 150, 20);
+    ctx.fillText(`LEVEL: ${level}`, W - 150, 38);
+
+    // Landing indicators (safe speed / angle)
+    const safeVY = Math.abs(lander.vy) <= MAX_LANDING_VY;
+    const safeVX = Math.abs(lander.vx) <= MAX_LANDING_VX;
+    const normAngle = ((lander.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const safeAngle = normAngle <= MAX_LANDING_ANGLE || normAngle >= (Math.PI * 2 - MAX_LANDING_ANGLE);
+
+    ctx.fillStyle = safeVY ? '#0f0' : '#f00';
+    ctx.fillText(safeVY ? 'V-SPD OK' : 'V-SPD HIGH', W - 150, 58);
+    ctx.fillStyle = safeVX ? '#0f0' : '#f00';
+    ctx.fillText(safeVX ? 'H-SPD OK' : 'H-SPD HIGH', W - 150, 76);
+    ctx.fillStyle = safeAngle ? '#0f0' : '#f00';
+    ctx.fillText(safeAngle ? 'ANGLE OK' : 'ANGLE BAD', W - 150, 94);
+  }
+
+  function drawMessage(text, sub) {
+    ctx.fillStyle = '#0f0';
+    ctx.font = 'bold 28px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(text, W / 2, H / 2 - 30);
+    if (sub) {
+      ctx.font = '16px "Courier New", monospace';
+      ctx.fillText(sub, W / 2, H / 2 + 10);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  function drawTitle() {
+    // CRT glow effect on title
+    ctx.shadowColor = '#0f0';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#0f0';
+    ctx.font = 'bold 10px "Courier New", monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('(C) 1979 LUNAR INDUSTRIES', W - 10, H - 10);
+    ctx.textAlign = 'left';
+    ctx.shadowBlur = 0;
+  }
+
+  // --- Main Loop ---
+  function gameLoop(time) {
+    // Clear
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    drawStars(time);
+    drawTerrain();
+    update();
+    drawLander();
+    drawParticles();
+    drawHUD();
+
+    if (state === 'landed') {
+      drawMessage('LANDING SUCCESSFUL!', `Score: ${score} -- Press SPACE for next level`);
+    } else if (state === 'crashed') {
+      drawMessage('CRASH!', `Final Score: ${score} -- Press SPACE to retry`);
+    }
+
+    drawTitle();
+    drawScanlines();
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  init(1);
+  score = 0;
+  requestAnimationFrame(gameLoop);
+})();
+</script>
+</body>
+</html>
