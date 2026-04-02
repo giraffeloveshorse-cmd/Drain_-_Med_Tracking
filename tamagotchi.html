@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AI Dog Companion</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e; color: #e0e0e0;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 20px;
+    user-select: none; -webkit-user-select: none;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; color: #d4a44a; text-align: center; }
+  .subtitle { font-size: 12px; color: #777; margin-bottom: 16px; }
+
+  /* Pet Display */
+  .pet-container {
+    width: 280px; height: 220px;
+    background: #16213e; border: 3px solid #0f3460;
+    border-radius: 20px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+    box-shadow: 0 0 30px rgba(212,164,74,0.2);
+  }
+  .pet-face { font-size: 80px; transition: all 0.3s; line-height: 1; }
+  .pet-name {
+    font-size: 16px; font-weight: bold; margin-top: 8px;
+    color: #d4a44a; letter-spacing: 1px;
+  }
+  .pet-mood { font-size: 11px; color: #999; margin-top: 4px; }
+  .pet-age { font-size: 10px; color: #555; margin-top: 2px; }
+
+  /* Floating particles */
+  .particle {
+    position: absolute; font-size: 20px; pointer-events: none;
+    animation: floatUp 1.5s ease-out forwards; opacity: 0;
+  }
+  @keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-80px) scale(1.5); }
+  }
+
+  /* Stats */
+  .stats { width: 280px; margin-top: 12px; }
+  .stat-row {
+    display: flex; align-items: center; margin: 5px 0;
+    font-size: 13px;
+  }
+  .stat-label { width: 80px; color: #aaa; }
+  .stat-bar-bg {
+    flex: 1; height: 14px; background: #0a0a1a;
+    border-radius: 7px; overflow: hidden; border: 1px solid #333;
+  }
+  .stat-bar {
+    height: 100%; border-radius: 7px;
+    transition: width 0.5s ease, background 0.5s;
+  }
+  .stat-val { width: 36px; text-align: right; font-size: 11px; color: #888; }
+
+  /* Buttons */
+  .actions {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px; width: 280px; margin-top: 14px;
+  }
+  .btn {
+    background: #16213e; border: 2px solid #0f3460;
+    color: #e0e0e0; border-radius: 12px;
+    padding: 10px 4px; font-size: 12px;
+    cursor: pointer; text-align: center;
+    font-family: 'Courier New', monospace;
+    transition: all 0.15s;
+  }
+  .btn:active { transform: scale(0.93); background: #0f3460; }
+  .btn:hover { border-color: #d4a44a; }
+  .btn .btn-icon { font-size: 22px; display: block; margin-bottom: 2px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Chat */
+  .chat-box {
+    width: 280px; margin-top: 12px;
+    background: #16213e; border: 2px solid #0f3460;
+    border-radius: 12px; padding: 10px;
+    min-height: 60px; max-height: 120px;
+    overflow-y: auto; font-size: 12px;
+    color: #ccc; line-height: 1.5;
+  }
+  .chat-box .msg { margin-bottom: 6px; }
+  .chat-box .msg:last-child { margin-bottom: 0; }
+  .chat-box .pet-says { color: #d4a44a; }
+  .chat-box .sys-says { color: #555; font-style: italic; }
+
+  /* Evolve animation */
+  .evolving .pet-face {
+    animation: evolve 1s ease-in-out;
+  }
+  @keyframes evolve {
+    0% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.5); filter: brightness(3) hue-rotate(180deg); }
+    100% { transform: scale(1); filter: brightness(1); }
+  }
+
+  /* Dead state */
+  .dead .pet-face { filter: grayscale(1); }
+
+  /* Name input modal */
+  .modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal-box {
+    background: #16213e; border: 2px solid #d4a44a;
+    border-radius: 16px; padding: 24px; text-align: center;
+    width: 280px;
+  }
+  .modal-box h2 { color: #d4a44a; margin-bottom: 12px; font-size: 18px; }
+  .modal-box input {
+    width: 100%; padding: 10px; border-radius: 8px;
+    border: 2px solid #0f3460; background: #0a0a1a;
+    color: #e0e0e0; font-family: 'Courier New', monospace;
+    font-size: 14px; text-align: center;
+    outline: none; margin-bottom: 12px;
+  }
+  .modal-box input:focus { border-color: #d4a44a; }
+  .modal-box button {
+    background: #d4a44a; border: none; color: white;
+    padding: 10px 24px; border-radius: 8px; cursor: pointer;
+    font-family: 'Courier New', monospace; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<h1>AI Dog Companion</h1>
+<div class="subtitle">Your virtual puppy needs love & care!</div>
+
+<div class="pet-container" id="petContainer">
+  <div class="pet-face" id="petFace"></div>
+  <div class="pet-name" id="petName"></div>
+  <div class="pet-mood" id="petMood"></div>
+  <div class="pet-age" id="petAge"></div>
+</div>
+
+<div class="stats" id="statsPanel">
+  <div class="stat-row">
+    <span class="stat-label">Hunger</span>
+    <div class="stat-bar-bg"><div class="stat-bar" id="barHunger"></div></div>
+    <span class="stat-val" id="valHunger"></span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Happy</span>
+    <div class="stat-bar-bg"><div class="stat-bar" id="barHappy"></div></div>
+    <span class="stat-val" id="valHappy"></span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Energy</span>
+    <div class="stat-bar-bg"><div class="stat-bar" id="barEnergy"></div></div>
+    <span class="stat-val" id="valEnergy"></span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Health</span>
+    <div class="stat-bar-bg"><div class="stat-bar" id="barHealth"></div></div>
+    <span class="stat-val" id="valHealth"></span>
+  </div>
+</div>
+
+<div class="actions" id="actionsPanel">
+  <button class="btn" onclick="doAction('feed')"><span class="btn-icon">🦴</span>Feed</button>
+  <button class="btn" onclick="doAction('play')"><span class="btn-icon">🎾</span>Play</button>
+  <button class="btn" onclick="doAction('walk')"><span class="btn-icon">🐾</span>Walk</button>
+  <button class="btn" onclick="doAction('sleep')"><span class="btn-icon">😴</span>Sleep</button>
+  <button class="btn" onclick="doAction('clean')"><span class="btn-icon">🛁</span>Bath</button>
+  <button class="btn" onclick="doAction('pet')"><span class="btn-icon">🤗</span>Pet</button>
+  <button class="btn" onclick="doAction('train')"><span class="btn-icon">🏆</span>Train</button>
+  <button class="btn" onclick="doAction('heal')"><span class="btn-icon">💊</span>Vet</button>
+  <button class="btn" onclick="doAction('talk')"><span class="btn-icon">🗣️</span>Talk</button>
+</div>
+
+<div class="chat-box" id="chatBox">
+  <div class="msg sys-says">Adopt your puppy to begin...</div>
+</div>
+
+<!-- Name modal -->
+<div class="modal" id="nameModal">
+  <div class="modal-box">
+    <h2>🐶 Adopt Your Pup!</h2>
+    <p style="color:#aaa;font-size:12px;margin-bottom:12px;">Give your new best friend a name</p>
+    <input type="text" id="nameInput" placeholder="Enter a name..." maxlength="12" autofocus>
+    <br>
+    <button onclick="hatchPet()">Adopt!</button>
+  </div>
+</div>
+
+<script>
+// ─── State ───
+const SAVE_KEY = 'ai_dog_companion_save';
+let pet = null;
+let tickTimer = null;
+
+// Growth stages for your dog
+const STAGES = [
+  { name: 'Puppy',      minAge: 0,   emoji: '🐶' },
+  { name: 'Young Dog',  minAge: 10,  emoji: '🐕' },
+  { name: 'Adult Dog',  minAge: 30,  emoji: '🦮' },
+  { name: 'Wise Dog',   minAge: 60,  emoji: '🐕‍🦺' },
+  { name: 'Senior Dog', minAge: 100, emoji: '🐾' },
+];
+
+const TRICKS = ['Sit', 'Shake', 'Roll Over', 'Speak', 'High Five', 'Play Dead', 'Spin', 'Beg', 'Crawl', 'Jump'];
+
+const MOODS = {
+  ecstatic:  { threshold: 85, label: 'Tail Wagging!', color: '#4ade80' },
+  happy:     { threshold: 65, label: 'Happy Pup', color: '#a3e635' },
+  content:   { threshold: 45, label: 'Relaxed', color: '#facc15' },
+  sad:       { threshold: 25, label: 'Whimpering', color: '#fb923c' },
+  miserable: { threshold: 0,  label: 'Howling Sadly', color: '#f87171' },
+};
+
+const DOG_DIALOGUE = {
+  feed: [
+    "*gobble gobble* Woof! So yummy!",
+    "*tail wags furiously* More kibble please!",
+    "*crunch crunch* Best treats ever!",
+    "ARF! That was delicious!",
+    "*licks bowl clean* Mmm!",
+    "*happy dance around food bowl*",
+  ],
+  play: [
+    "*fetches ball* AGAIN! Throw it again!",
+    "WOOF WOOF! I caught it!",
+    "*zooms around in circles* WEEEEE!",
+    "*play bows* Let's go let's go!",
+    "*tugs on rope toy* Grrr playfully!",
+    "*brings you a squeaky toy*",
+  ],
+  walk: [
+    "*pulls on leash excitedly* WALK TIME!",
+    "So many smells! This fire hydrant is AMAZING!",
+    "*trots happily beside you*",
+    "I saw a squirrel! SQUIRREL!!",
+    "*sniff sniff sniff* The whole world is news!",
+    "This is the BEST walk ever! (I say that every time)",
+  ],
+  sleep: [
+    "*curls up in a ball* Zzz...",
+    "*twitches paws in sleep* ...chasing dream squirrels...",
+    "*soft snoring*",
+    "*yawns hugely* Goodnight, human...",
+    "*circles three times then flops down*",
+  ],
+  clean: [
+    "*shakes water everywhere* FREEDOM!",
+    "Do I smell like flowers now? Weird...",
+    "*tolerates bath with sad eyes*",
+    "Why do humans like us clean? Mud is great!",
+    "*immediately tries to roll in dirt*",
+  ],
+  pet: [
+    "*leans into your hand* More scritches please!",
+    "*tail goes helicopter mode*",
+    "*rolls over for belly rubs* Right there... perfect!",
+    "*licks your face* I LOVE YOU!",
+    "*happy grumble* Don't ever stop...",
+    "*puts paw on your hand*",
+  ],
+  train: [
+    "*sits perfectly* Did I do good?! DID I?!",
+    "*tilts head* ...what do you want me to do?",
+    "TREAT?! I'll do ANYTHING for a treat!",
+    "*focuses intensely on your hand*",
+    "*nails the trick* I'M THE BEST BOY!",
+  ],
+  heal: [
+    "*whimpers at the vet* Is it over yet?",
+    "*hides behind your legs*",
+    "The vet gave me a treat so I guess it's okay...",
+    "*bravely endures examination*",
+    "I don't like this place but I trust you!",
+  ],
+  talk: [
+    "*tilts head* Bork?",
+    "WOOF! (That means I love you)",
+    "*brings you a shoe* Present!",
+    "*puts head on your lap and sighs contentedly*",
+    "If I stare at you long enough, treats appear. It's science.",
+    "*does a little awoo~*",
+    "You're my whole world, you know that?",
+    "*wags tail so hard whole body wiggles*",
+    "I dreamed we went to a park made entirely of bacon.",
+    "Every time you leave I think you're gone forever. Every time you come back it's the BEST DAY!",
+  ],
+  hungry: [
+    "*stares at food bowl meaningfully*",
+    "*nudges your hand with nose* ...dinner?",
+    "*sits by the kitchen and whines softly*",
+  ],
+  tired: [
+    "*big yawn* So... sleepy...",
+    "*eyelids drooping*",
+    "*rests chin on paws*",
+  ],
+  sick: [
+    "*lies down and whimpers*",
+    "*nose is warm and dry*",
+    "*looks at you with sad puppy eyes*",
+  ],
+  dirty: [
+    "*scratches behind ear*",
+    "*smells a bit ripe*",
+    "*leaves muddy paw prints everywhere*",
+  ],
+};
+
+// ─── Core Logic ───
+
+function createPet(name) {
+  return {
+    name: name,
+    born: Date.now(),
+    hunger: 80,
+    happiness: 80,
+    energy: 90,
+    health: 100,
+    cleanliness: 90,
+    age: 0,
+    stage: 0,
+    alive: true,
+    sleeping: false,
+    lastUpdate: Date.now(),
+    totalActions: 0,
+    tricksLearned: [],
+    walksTaken: 0,
+    loyalty: 50,
+  };
+}
+
+function getStage(age) {
+  for (let i = STAGES.length - 1; i >= 0; i--) {
+    if (age >= STAGES[i].minAge) return i;
+  }
+  return 0;
+}
+
+function getMood(p) {
+  const avg = (p.hunger + p.happiness + p.energy + p.health) / 4;
+  for (const [key, m] of Object.entries(MOODS)) {
+    if (avg >= m.threshold) return m;
+  }
+  return MOODS.miserable;
+}
+
+function getDogDisplay(p) {
+  if (!p.alive) return '🐕\u200D🌈';
+  if (p.sleeping) return '😴🐶';
+  const stage = STAGES[p.stage];
+  const mood = getMood(p);
+  if (p.health < 30) return '🤒🐶';
+  if (mood.label === 'Howling Sadly') return '😢🐶';
+  if (mood.label === 'Whimpering') return '🥺🐶';
+  return stage.emoji;
+}
+
+function tick() {
+  if (!pet || !pet.alive) return;
+
+  const now = Date.now();
+  const elapsed = (now - pet.lastUpdate) / 1000;
+  pet.lastUpdate = now;
+
+  // Age: 1 dog-minute per 30 real seconds
+  pet.age += elapsed / 30;
+
+  // Check growth
+  const newStage = getStage(pet.age);
+  if (newStage > pet.stage) {
+    pet.stage = newStage;
+    addChat('sys', `${pet.name} grew into a ${STAGES[newStage].name}! ${STAGES[newStage].emoji}`);
+    document.getElementById('petContainer').classList.add('evolving');
+    setTimeout(() => document.getElementById('petContainer').classList.remove('evolving'), 1000);
+  }
+
+  // Decay rates (per second)
+  const decayRate = pet.sleeping ? 0.3 : 1;
+  pet.hunger     = Math.max(0, pet.hunger     - 0.04 * decayRate * elapsed);
+  pet.happiness  = Math.max(0, pet.happiness  - 0.03 * decayRate * elapsed);
+  pet.energy     = pet.sleeping
+    ? Math.min(100, pet.energy + 0.08 * elapsed)
+    : Math.max(0, pet.energy - 0.025 * elapsed);
+  pet.cleanliness = Math.max(0, pet.cleanliness - 0.02 * elapsed);
+
+  // Loyalty slowly grows over time
+  pet.loyalty = Math.min(100, pet.loyalty + 0.002 * elapsed);
+
+  // Health effects
+  if (pet.hunger < 15 || pet.cleanliness < 15) {
+    pet.health = Math.max(0, pet.health - 0.05 * elapsed);
+  }
+  if (pet.hunger > 50 && pet.cleanliness > 50 && pet.health < 100) {
+    pet.health = Math.min(100, pet.health + 0.01 * elapsed);
+  }
+
+  // Wake up if fully rested
+  if (pet.sleeping && pet.energy >= 95) {
+    pet.sleeping = false;
+    addChat('pet', "*stretches and yawns* Good morning! WALK?!");
+  }
+
+  // Random dog chatter
+  if (Math.random() < 0.002 * elapsed) {
+    if (pet.hunger < 25) addChat('pet', pick(DOG_DIALOGUE.hungry));
+    else if (pet.energy < 25) addChat('pet', pick(DOG_DIALOGUE.tired));
+    else if (pet.health < 40) addChat('pet', pick(DOG_DIALOGUE.sick));
+    else if (pet.cleanliness < 25) addChat('pet', pick(DOG_DIALOGUE.dirty));
+  }
+
+  // Death check
+  if (pet.health <= 0) {
+    pet.alive = false;
+    pet.sleeping = false;
+    addChat('sys', `${pet.name} has crossed the rainbow bridge... They were the best dog for ${Math.floor(pet.age)} dog-minutes.`);
+    addChat('sys', 'Refresh the page to adopt a new pup.');
+    document.getElementById('petContainer').classList.add('dead');
+    disableButtons();
+  }
+
+  render();
+  save();
+}
+
+function doAction(action) {
+  if (!pet || !pet.alive) return;
+
+  if (pet.sleeping && action !== 'talk') {
+    addChat('sys', `${pet.name} is napping... let them dream of squirrels!`);
+    return;
+  }
+
+  pet.totalActions++;
+  spawnParticle(action);
+
+  switch (action) {
+    case 'feed':
+      if (pet.hunger >= 95) { addChat('sys', `${pet.name} isn't hungry right now.`); return; }
+      pet.hunger = Math.min(100, pet.hunger + 25);
+      pet.energy = Math.min(100, pet.energy + 5);
+      pet.loyalty = Math.min(100, pet.loyalty + 2);
+      addChat('pet', pick(DOG_DIALOGUE.feed));
+      break;
+
+    case 'play':
+      if (pet.energy < 10) { addChat('sys', `${pet.name} is too tired to play.`); return; }
+      pet.happiness = Math.min(100, pet.happiness + 20);
+      pet.energy = Math.max(0, pet.energy - 15);
+      pet.hunger = Math.max(0, pet.hunger - 8);
+      pet.cleanliness = Math.max(0, pet.cleanliness - 5);
+      pet.loyalty = Math.min(100, pet.loyalty + 3);
+      addChat('pet', pick(DOG_DIALOGUE.play));
+      break;
+
+    case 'walk':
+      if (pet.energy < 15) { addChat('sys', `${pet.name} is too tired for a walk.`); return; }
+      pet.happiness = Math.min(100, pet.happiness + 15);
+      pet.energy = Math.max(0, pet.energy - 12);
+      pet.hunger = Math.max(0, pet.hunger - 10);
+      pet.cleanliness = Math.max(0, pet.cleanliness - 8);
+      pet.health = Math.min(100, pet.health + 3);
+      pet.loyalty = Math.min(100, pet.loyalty + 4);
+      pet.walksTaken++;
+      addChat('pet', pick(DOG_DIALOGUE.walk));
+      break;
+
+    case 'sleep':
+      if (pet.sleeping) { addChat('sys', `${pet.name} is already snoozing!`); return; }
+      if (pet.energy > 80) { addChat('sys', `${pet.name} has too much energy to sleep!`); return; }
+      pet.sleeping = true;
+      addChat('pet', pick(DOG_DIALOGUE.sleep));
+      break;
+
+    case 'clean':
+      if (pet.cleanliness >= 95) { addChat('sys', `${pet.name} is already squeaky clean!`); return; }
+      pet.cleanliness = Math.min(100, pet.cleanliness + 30);
+      pet.happiness = Math.max(0, pet.happiness - 3); // dogs don't love baths
+      addChat('pet', pick(DOG_DIALOGUE.clean));
+      break;
+
+    case 'pet':
+      pet.happiness = Math.min(100, pet.happiness + 12);
+      pet.loyalty = Math.min(100, pet.loyalty + 5);
+      addChat('pet', pick(DOG_DIALOGUE.pet));
+      break;
+
+    case 'train':
+      if (pet.energy < 10) { addChat('sys', `${pet.name} is too tired to train.`); return; }
+      pet.energy = Math.max(0, pet.energy - 10);
+      pet.hunger = Math.max(0, pet.hunger - 5);
+      pet.loyalty = Math.min(100, pet.loyalty + 3);
+
+      // Chance to learn a new trick
+      const unlearnedTricks = TRICKS.filter(t => !pet.tricksLearned.includes(t));
+      if (unlearnedTricks.length > 0 && Math.random() < 0.4) {
+        const newTrick = pick(unlearnedTricks);
+        pet.tricksLearned.push(newTrick);
+        pet.happiness = Math.min(100, pet.happiness + 15);
+        addChat('pet', pick(DOG_DIALOGUE.train));
+        addChat('sys', `${pet.name} learned a new trick: ${newTrick}! (${pet.tricksLearned.length}/${TRICKS.length})`);
+      } else if (unlearnedTricks.length === 0) {
+        pet.happiness = Math.min(100, pet.happiness + 8);
+        addChat('sys', `${pet.name} knows all the tricks! What a good dog!`);
+      } else {
+        pet.happiness = Math.min(100, pet.happiness + 5);
+        addChat('pet', pick(DOG_DIALOGUE.train));
+        addChat('sys', "Good effort! Keep practicing!");
+      }
+      break;
+
+    case 'heal':
+      if (pet.health >= 90) { addChat('sys', `${pet.name} is healthy! No vet needed.`); return; }
+      pet.health = Math.min(100, pet.health + 25);
+      pet.happiness = Math.max(0, pet.happiness - 5);
+      addChat('pet', pick(DOG_DIALOGUE.heal));
+      break;
+
+    case 'talk':
+      if (pet.sleeping) {
+        addChat('sys', `*whispers* ${pet.name}'s paws twitch in their sleep...`);
+        pet.happiness = Math.min(100, pet.happiness + 2);
+      } else {
+        pet.happiness = Math.min(100, pet.happiness + 8);
+        pet.loyalty = Math.min(100, pet.loyalty + 2);
+        addChat('pet', pick(DOG_DIALOGUE.talk));
+      }
+      break;
+  }
+
+  render();
+  save();
+}
+
+// ─── UI ───
+
+function render() {
+  if (!pet) return;
+
+  document.getElementById('petFace').textContent = getDogDisplay(pet);
+  document.getElementById('petName').textContent = pet.name;
+
+  const mood = getMood(pet);
+  const moodEl = document.getElementById('petMood');
+  moodEl.textContent = pet.sleeping ? 'Dreaming of treats...' : mood.label;
+  moodEl.style.color = pet.sleeping ? '#7c8dff' : mood.color;
+
+  const tricks = pet.tricksLearned.length > 0 ? ` | Tricks: ${pet.tricksLearned.length}` : '';
+  document.getElementById('petAge').textContent =
+    `${STAGES[pet.stage].name} | Age: ${Math.floor(pet.age)}m | Loyalty: ${Math.round(pet.loyalty)}%${tricks}`;
+
+  updateBar('Hunger', pet.hunger);
+  updateBar('Happy', pet.happiness);
+  updateBar('Energy', pet.energy);
+  updateBar('Health', pet.health);
+}
+
+function updateBar(name, value) {
+  const bar = document.getElementById('bar' + name);
+  const val = document.getElementById('val' + name);
+  bar.style.width = value + '%';
+  val.textContent = Math.round(value);
+
+  if (value > 60) bar.style.background = '#4ade80';
+  else if (value > 30) bar.style.background = '#facc15';
+  else bar.style.background = '#f87171';
+}
+
+function addChat(type, text) {
+  const box = document.getElementById('chatBox');
+  const cls = type === 'pet' ? 'pet-says' : 'sys-says';
+  const prefix = type === 'pet' ? `${pet ? pet.name : 'Dog'}: ` : '';
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  div.textContent = prefix + text;
+  box.appendChild(div);
+
+  while (box.children.length > 20) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+function spawnParticle(action) {
+  const emojis = {
+    feed: '🦴', play: '🎾', walk: '🐾', sleep: '💤',
+    clean: '🫧', pet: '❤️', train: '⭐', heal: '💊', talk: '💬'
+  };
+  const container = document.getElementById('petContainer');
+  const p = document.createElement('div');
+  p.className = 'particle';
+  p.textContent = emojis[action] || '❤️';
+  p.style.left = (30 + Math.random() * 60) + '%';
+  p.style.top = (40 + Math.random() * 30) + '%';
+  container.appendChild(p);
+  setTimeout(() => p.remove(), 1500);
+}
+
+function disableButtons() {
+  document.querySelectorAll('.btn').forEach(b => b.disabled = true);
+}
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// ─── Save / Load ───
+
+function save() {
+  if (pet) localStorage.setItem(SAVE_KEY, JSON.stringify(pet));
+}
+
+function load() {
+  try {
+    const data = localStorage.getItem(SAVE_KEY);
+    if (data) {
+      pet = JSON.parse(data);
+      pet.lastUpdate = Date.now();
+      // Ensure new fields exist for old saves
+      if (pet.tricksLearned === undefined) pet.tricksLearned = [];
+      if (pet.walksTaken === undefined) pet.walksTaken = 0;
+      if (pet.loyalty === undefined) pet.loyalty = 50;
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
+// ─── Init ───
+
+function hatchPet() {
+  const input = document.getElementById('nameInput');
+  const name = input.value.trim() || 'Buddy';
+  pet = createPet(name);
+  document.getElementById('nameModal').style.display = 'none';
+  addChat('sys', `${name} bounds into your life! What a cute puppy!`);
+  addChat('pet', "*tail wagging intensely* WOOF! I love you already!");
+  render();
+  save();
+  startTick();
+}
+
+function startTick() {
+  if (tickTimer) clearInterval(tickTimer);
+  tickTimer = setInterval(tick, 1000);
+}
+
+// Check for existing save
+if (load()) {
+  document.getElementById('nameModal').style.display = 'none';
+  const timePassed = (Date.now() - pet.lastUpdate) / 1000;
+  const cappedTime = Math.min(timePassed, 3600);
+  pet.hunger = Math.max(0, pet.hunger - 0.04 * cappedTime);
+  pet.happiness = Math.max(0, pet.happiness - 0.03 * cappedTime);
+  pet.energy = Math.max(0, pet.energy - 0.025 * cappedTime);
+  pet.cleanliness = Math.max(0, pet.cleanliness - 0.02 * cappedTime);
+  pet.lastUpdate = Date.now();
+
+  addChat('sys', `Welcome back! ${pet.name} is SO excited to see you!`);
+  addChat('pet', "*spins in circles* YOU'RE HOME YOU'RE HOME YOU'RE HOME!");
+  if (pet.hunger < 30) addChat('pet', pick(DOG_DIALOGUE.hungry));
+  if (!pet.alive) {
+    document.getElementById('petContainer').classList.add('dead');
+    disableButtons();
+  }
+  render();
+  save();
+  startTick();
+}
+
+document.getElementById('nameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') hatchPet();
+});
+</script>
+</body>
+</html>
